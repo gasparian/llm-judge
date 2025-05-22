@@ -11,5 +11,10 @@
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow factoryClass="com.github.gasparian.llmjudge.toolWindow.MyToolWindowFactory" id="MyToolWindow"/>
         <postStartupActivity implementation="com.github.gasparian.llmjudge.startup.MyProjectActivity" />
+        <!-- register your Tool Window -->
+        <toolWindow
+                id="LLM Judge"
+                anchor="right"
+                factoryClass="com.github.gasparian.llmjudge.toolWindow.MyToolWindowFactory"/>
     </extensions>
 </idea-plugin>

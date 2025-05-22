@@ -104,6 +104,12 @@ intellijPlatform {
         ides {
             recommended()
         }
+        intellijPlatform {
+            // … your pluginConfiguration, signing, publishing, pluginVerification …
+
+            // Disable the byte-code instrumentation step that’s choking on your JDK layout
+            instrumentCode.set(false)
+        }
     }
 }
 
