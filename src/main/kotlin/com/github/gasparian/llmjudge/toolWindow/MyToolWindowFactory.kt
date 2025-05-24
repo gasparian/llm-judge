@@ -1,6 +1,7 @@
 package com.github.gasparian.llmjudge.toolWindow
 
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.annotation.JsonCreator
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.intellij.icons.AllIcons
@@ -23,14 +24,33 @@ import java.nio.file.Paths
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import javax.swing.table.DefaultTableModel
-import com.aallam.openai.client.OpenAI
-import com.aallam.openai.client.OpenAIConfig
 import com.intellij.notification.NotificationType
 import com.intellij.notification.NotificationGroupManager
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.plugins.HttpTimeoutConfig
+
+import com.openai.client.OpenAIClient
+import com.openai.client.okhttp.OpenAIOkHttpClient
+import java.time.Duration
+
+object OpenAIJavaService {
+    /**
+     * Create an OpenAIClient using the OkHttp transport.
+     */
+    fun create(apiKey: String): OpenAIClient =
+    OpenAIOkHttpClient.builder()
+        .apiKey(apiKey)
+        .timeout(Duration.ofSeconds(30))
+        .build();
+}
+
+data class Entry @JsonCreator constructor(
+    @JsonProperty("input")           val input: String,
+    @JsonProperty("reference_output") val referenceOutput: String
+)
+
+data class Config @JsonCreator constructor(
+    @JsonProperty("model_path") val modelPath: String,
+    @JsonProperty("data")       val data: List<Entry>
+)
 
 class MyToolWindowFactory : ToolWindowFactory {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -43,16 +63,6 @@ class MyToolWindowFactory : ToolWindowFactory {
         val tableModel = DefaultTableModel(columns, 0)
         val table = JBTable(tableModel).apply { fillsViewportHeight = true }
         panel.add(JBScrollPane(table), BorderLayout.CENTER)
-
-        // Data classes for JSON config
-        data class Entry(
-            val input: String,
-            @JsonProperty("reference_output") val referenceOutput: String
-        )
-        data class Config(
-            @JsonProperty("model_path") val modelPath: String,
-            val data: List<Entry>
-        )
 
         // Toolbar and Run action
         val actionGroup = DefaultActionGroup()
@@ -77,28 +87,7 @@ class MyToolWindowFactory : ToolWindowFactory {
                         .notify(project)
                     return
                 }
-                // Instantiate OpenAI client
-//                val openai = OpenAI(
-//                    token = apiKey,
-//                    timeout = Timeout(socket = 60_000),
-//                )
-                val httpClient = HttpClient(CIO) {
-                    install(HttpTimeout) {
-                        requestTimeoutMillis = 60_000
-                    }
-                }
-                val openai = OpenAI(
-                    OpenAIConfig(
-                        token   = apiKey,
-                        timeout = Timeout(
-                            connectTimeoutMillis = 15_000,
-                            readTimeoutMillis    = 60_000,
-                            writeTimeoutMillis   = 60_000
-                        ),
-                        httpClient
-                    )
-                )
-
+                val openai = OpenAIJavaService.create(apiKey)
 
                 // Reset table
                 tableModel.rowCount = 0

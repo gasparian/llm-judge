@@ -34,9 +34,7 @@ repositories {
 dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.opentest4j)
-    implementation(libs.openai.client)
-    implementation(libs.ktor.client.cio)
-    implementation(libs.ktor.client.core)
+    implementation(libs.openai.java)
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
