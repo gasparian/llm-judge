@@ -2,6 +2,7 @@ package com.github.gasparian.llmjudge.toolWindow
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.annotation.JsonCreator
+import com.fasterxml.jackson.annotation.JsonAlias
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.intellij.icons.AllIcons
@@ -30,6 +31,9 @@ import com.intellij.notification.NotificationGroupManager
 import com.openai.client.OpenAIClient
 import com.openai.client.okhttp.OpenAIOkHttpClient
 import java.time.Duration
+import com.openai.models.ChatModel
+import com.openai.models.chat.completions.ChatCompletionCreateParams
+//import kotlinx.coroutines.*
 
 object OpenAIJavaService {
     /**
@@ -43,14 +47,86 @@ object OpenAIJavaService {
 }
 
 data class Entry @JsonCreator constructor(
-    @JsonProperty("input")           val input: String,
-    @JsonProperty("reference_output") val referenceOutput: String
+    @JsonProperty("input")            val input: String,
+    @JsonProperty("reference_output") val referenceOutput: String,
+    @JsonProperty("model_output")     val modelOutput: String? = null
 )
+
 
 data class Config @JsonCreator constructor(
     @JsonProperty("model_path") val modelPath: String,
     @JsonProperty("data")       val data: List<Entry>
 )
+
+object PromptProvider {
+    private val promptTemplate: String by lazy {
+        javaClass.getResource("/judge_prompt.txt")!!.readText()
+    }
+
+    /**
+     * Renders the judge prompt for a given entry, ensuring that a null
+     * model output is treated as an empty string.
+     */
+    fun forEntry(input: String, reference: String, output: String?): String {
+        val safeOutput = output ?: ""
+        return promptTemplate
+            .replace("{input}", input)
+            .replace("{reference}", reference)
+            .replace("{output}", safeOutput)
+    }
+}
+
+
+data class Feedback(
+    val correctness: Int,
+    val relevance: Int,
+    val fluency: Int,
+    val completeness: Int,
+    val clarity: Int,
+    @JsonProperty("total_score")
+    @JsonAlias("totalScore")
+    val totalScore: Int
+)
+
+// Suspended, so you can call it from your existing scope.launch { … }
+suspend fun evaluateWithLLM(
+    openai: OpenAIClient,
+    entry: Entry,
+    calls: Int = 3
+): Feedback = coroutineScope {
+    // Launch N independent judge calls
+    val deferreds = (1..calls).map {
+        async(Dispatchers.IO) {
+            // 1) Build a structured-output chat completion request
+            val params = ChatCompletionCreateParams.builder()
+                .model(ChatModel.GPT_4O)
+                .addUserMessage(PromptProvider.forEntry(
+                    entry.input, entry.referenceOutput, entry.modelOutput
+                ))
+                .responseFormat(Feedback::class.java)
+                .build()
+
+            // 2) Send the request synchronously (we’re inside IO dispatcher)
+            val chatCompletion = openai.chat().completions().create(params)
+
+            // 3) Extract the single Feedback instance from the choice
+            chatCompletion.choices().first().message().content().orElseThrow()
+        }
+    }
+
+    // Await all responses
+    val results: List<Feedback> = deferreds.awaitAll()
+
+    // Majority vote on totalScore
+    val majorityScore = results
+        .groupingBy { it.totalScore }
+        .eachCount()
+        .maxByOrNull { it.value }!!
+        .key
+
+    // Return the first Feedback matching the majority totalScore
+    results.first { it.totalScore == majorityScore }
+}
 
 class MyToolWindowFactory : ToolWindowFactory {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -72,7 +148,19 @@ class MyToolWindowFactory : ToolWindowFactory {
         panel.add(toolbar.component, BorderLayout.NORTH)
 
         val runAction = object : AnAction("Run", "Start evaluation", AllIcons.Actions.Execute) {
+            private val jobs = mutableListOf<Job>()
+
             override fun actionPerformed(e: AnActionEvent) {
+                val presentation = e.presentation
+                // If we're already running, cancel everything
+                if (presentation.icon === AllIcons.Actions.Suspend) {
+                    scope.coroutineContext.cancelChildren()                 // stop all in‐flight jobs
+                    presentation.icon = AllIcons.Actions.Execute           // swap back to ▶️
+                    return
+                }
+
+                presentation.icon = AllIcons.Actions.Suspend
+
                 // Check API key
                 val apiKey = System.getenv("OPENAI_API_KEY")
 
@@ -99,6 +187,7 @@ class MyToolWindowFactory : ToolWindowFactory {
                 val config: Config = mapper.readValue(configFile)
 
                 // Launch evaluation coroutines per entry
+                jobs.clear()
                 config.data.forEachIndexed { rowIndex, entry ->
                     // Initial row: empty model output & score placeholder
                     tableModel.addRow(arrayOf(entry.input, entry.referenceOutput, "", ""))
@@ -116,20 +205,35 @@ class MyToolWindowFactory : ToolWindowFactory {
                     process.waitFor()
                     tableModel.setValueAt(output, rowIndex, 2)
 
-                    scope.launch {
+                    val job = scope.launch {
                         // Update model output immediately
                         SwingUtilities.invokeLater {
                             tableModel.setValueAt("evaluating...", rowIndex, 3)
                         }
 
-                        // 2) Simulate scoring delay
-                        delay((500..2000).random().toLong())
-                        val score = (1..10).random()
+                        try {
+                            val feedback = evaluateWithLLM(openai, entry, calls = 5)
+                            SwingUtilities.invokeLater {
+                                tableModel.setValueAt(feedback.totalScore, rowIndex, 3)
+                            }
+                        } catch (e: Exception) {
+                            // Log error message and full stacktrace
+                            System.err.println("LLM Judge: Error evaluating row $rowIndex: ${e.message}")
+//                            e.printStackTrace()
 
-                        // Update score when ready
-                        SwingUtilities.invokeLater {
-                            tableModel.setValueAt(score, rowIndex, 3)
+                            SwingUtilities.invokeLater {
+                                tableModel.setValueAt("Error", rowIndex, 3)
+                            }
                         }
+                    }
+                    jobs += job
+                }
+                // 5) Once _all_ row-jobs complete (or if they were cancelled), swap icon back
+                scope.launch {
+                    // wait for every per-row job
+                    jobs.joinAll()
+                    SwingUtilities.invokeLater {
+                        presentation.icon = AllIcons.Actions.Execute    // green ▶️
                     }
                 }
             }

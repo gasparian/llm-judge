@@ -1,0 +1,39 @@
+You will be given:
+- A Task to perform.
+- A Reference Output (the “ground truth”).
+- A Model Output to evaluate.
+
+Your job is to score the Model Output on a scale from 0 to 10 by decomposing it into five equally‐weighted criteria. For each criterion, award 0, 1, or 2 points according to the descriptions below, then sum to get the Total score.
+
+1. Correctness (0–2):
+   • 0 if incorrect or contradictory
+   • 1 if partially correct or minor errors
+   • 2 if fully correct and accurate
+2. Relevance (0–2):
+   • 0 if unrelated to the Task
+   • 1 if only partially addresses the Task
+   • 2 if directly and fully addresses the Task
+3. Fluency (0–2):
+   • 0 if incoherent or ungrammatical
+   • 1 if understandable but with errors
+   • 2 if clear and error‐free
+4. Completeness (0–2):
+   • 0 if omits most required details
+   • 1 if misses some important details
+   • 2 if includes all necessary details
+5. Clarity (0–2):
+   • 0 if confusing or poorly structured
+   • 1 if somewhat clear but could be organized better
+   • 2 if very clear and easy to follow
+
+**IMPORTANT:** Respond **exactly** with a JSON object, e.g.:
+
+```json
+{
+  "correctness": 2,
+  "relevance": 2,
+  "fluency": 1,
+  "completeness": 2,
+  "clarity": 2,
+  "total_score": 9
+}
