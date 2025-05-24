@@ -1,0 +1,33 @@
+{
+  "model_path": "model.py",
+  "data": [
+    {
+      "input": "What is the capital of France?",
+      "reference_output": "Paris"
+    },
+    {
+      "input": "What is 2+2?",
+      "reference_output": "4"
+    },
+    {
+      "input": "Who wrote 'Pride and Prejudice'?",
+      "reference_output": "Jane Austen"
+    },
+    {
+      "input": "What is the boiling point of water in Fahrenheit?",
+      "reference_output": "212"
+    },
+    {
+      "input": "What is the boiling point of water in Fahrenheit?",
+      "reference_output": "100"
+    },
+    {
+      "input": "Who painted the Mona Lisa?",
+      "reference_output": "Leonardo da Vinci"
+    },
+    {
+      "input": "Who painted the Mona Lisa?",
+      "reference_output": "Michelangelo"
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import org.jetbrains.changelog.Changelog
 import org.jetbrains.changelog.markdownToHTML
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask
 
 plugins {
     id("java") // Java support
@@ -33,6 +34,9 @@ repositories {
 dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.opentest4j)
+    implementation(libs.openai.client)
+    implementation(libs.ktor.client.cio)
+    implementation(libs.ktor.client.core)
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
@@ -105,9 +109,7 @@ intellijPlatform {
             recommended()
         }
         intellijPlatform {
-            // … your pluginConfiguration, signing, publishing, pluginVerification …
-
-            // Disable the byte-code instrumentation step that’s choking on your JDK layout
+            // Disable the byte-code instrumentation
             instrumentCode.set(false)
         }
     }
@@ -159,4 +161,14 @@ intellijPlatformTesting {
             }
         }
     }
+}
+
+tasks.named<RunIdeTask>("runIde") {
+    // pull your host’s environment key into the sandbox
+    environment("OPENAI_API_KEY", System.getenv("OPENAI_API_KEY") ?: "")
+}
+
+// If you also need it in your UI‐test sandbox:
+tasks.named<RunIdeTask>("runIdeForUiTests") {
+    environment("OPENAI_API_KEY", System.getenv("OPENAI_API_KEY") ?: "")
 }

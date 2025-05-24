@@ -5,7 +5,6 @@
     <vendor>gasparian</vendor>
 
     <depends>com.intellij.modules.platform</depends>
-
     <resource-bundle>messages.MyBundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
@@ -16,5 +15,8 @@
                 id="LLM Judge"
                 anchor="right"
                 factoryClass="com.github.gasparian.llmjudge.toolWindow.MyToolWindowFactory"/>
+        <notificationGroup
+                id="LLM Judge"
+                displayType="BALLOON"/>
     </extensions>
 </idea-plugin>
