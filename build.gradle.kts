@@ -10,6 +10,7 @@ plugins {
     alias(libs.plugins.changelog) // Gradle Changelog Plugin
     alias(libs.plugins.qodana) // Gradle Qodana Plugin
     alias(libs.plugins.kover) // Gradle Kover Plugin
+    alias(libs.plugins.ktlint) // Linter
 }
 
 group = providers.gradleProperty("pluginGroup").get()
@@ -128,6 +129,12 @@ kover {
             }
         }
     }
+}
+
+ktlint {
+    version.set("0.49.1")
+    verbose.set(true)
+    enableExperimentalRules.set(true)
 }
 
 tasks {

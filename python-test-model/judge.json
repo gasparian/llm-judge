@@ -28,6 +28,10 @@
     {
       "input": "Who painted the Mona Lisa?",
       "reference_output": "Michelangelo"
+    },
+    {
+      "input": "What's the age of the Universe?",
+      "reference_output": "13 billion years"
     }
   ]
 }

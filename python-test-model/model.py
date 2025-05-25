@@ -15,6 +15,8 @@ def simulate_answer(prompt: str) -> str:
         "Who wrote 'Pride and Prejudice'": "Jane Austen",
         "What is the boiling point of water in Fahrenheit?": "212",
         "Who painted the Mona Lisa?": "Leonardo da Vinci",
+        "Who painted the Mona Lisa?": "Leonardo da Vinci",
+        "What's the age of the Universe?": "Approximately between 12 and 14 billion years",
     }
     wrong = {
         "What is the boiling point of water in Fahrenheit?": "100",

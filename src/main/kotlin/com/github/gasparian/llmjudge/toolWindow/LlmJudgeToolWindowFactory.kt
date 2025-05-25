@@ -1,61 +1,66 @@
 package com.github.gasparian.llmjudge.toolWindow
 
-import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.annotation.JsonCreator
-import com.fasterxml.jackson.annotation.JsonAlias
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.intellij.icons.AllIcons
+import com.intellij.notification.NotificationGroupManager
+import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.actionSystem.ActionToolbar
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
-import com.intellij.openapi.actionSystem.ActionToolbar
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
-import com.intellij.ui.table.JBTable
 import com.intellij.ui.content.ContentFactory
-import kotlinx.coroutines.*
+import com.intellij.ui.table.JBTable
+import com.openai.client.OpenAIClient
+import com.openai.client.okhttp.OpenAIOkHttpClient
+import com.openai.models.ChatModel
+import com.openai.models.chat.completions.ChatCompletionCreateParams
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import java.awt.BorderLayout
 import java.io.File
 import java.nio.file.Paths
+import java.time.Duration
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import javax.swing.table.DefaultTableModel
-import com.intellij.notification.NotificationType
-import com.intellij.notification.NotificationGroupManager
-
-import com.openai.client.OpenAIClient
-import com.openai.client.okhttp.OpenAIOkHttpClient
-import java.time.Duration
-import com.openai.models.ChatModel
-import com.openai.models.chat.completions.ChatCompletionCreateParams
-//import kotlinx.coroutines.*
 
 object OpenAIJavaService {
     /**
      * Create an OpenAIClient using the OkHttp transport.
      */
     fun create(apiKey: String): OpenAIClient =
-    OpenAIOkHttpClient.builder()
-        .apiKey(apiKey)
-        .timeout(Duration.ofSeconds(30))
-        .build();
+        OpenAIOkHttpClient.builder()
+            .apiKey(apiKey)
+            .timeout(Duration.ofSeconds(30))
+            .build()
 }
 
 data class Entry @JsonCreator constructor(
-    @JsonProperty("input")            val input: String,
+    @JsonProperty("input") val input: String,
     @JsonProperty("reference_output") val referenceOutput: String,
-    @JsonProperty("model_output")     val modelOutput: String? = null
+    @JsonProperty("model_output") var modelOutput: String? = null,
 )
-
 
 data class Config @JsonCreator constructor(
     @JsonProperty("model_path") val modelPath: String,
-    @JsonProperty("data")       val data: List<Entry>
+    @JsonProperty("data") val data: List<Entry>,
 )
 
 object PromptProvider {
@@ -76,23 +81,15 @@ object PromptProvider {
     }
 }
 
-
 data class Feedback(
-    val correctness: Int,
-    val relevance: Int,
-    val fluency: Int,
-    val completeness: Int,
-    val clarity: Int,
-    @JsonProperty("total_score")
-    @JsonAlias("totalScore")
-    val totalScore: Int
+    val score: Int,
 )
 
 // Suspended, so you can call it from your existing scope.launch { … }
 suspend fun evaluateWithLLM(
     openai: OpenAIClient,
     entry: Entry,
-    calls: Int = 3
+    calls: Int = 3,
 ): Feedback = coroutineScope {
     // Launch N independent judge calls
     val deferreds = (1..calls).map {
@@ -100,9 +97,13 @@ suspend fun evaluateWithLLM(
             // 1) Build a structured-output chat completion request
             val params = ChatCompletionCreateParams.builder()
                 .model(ChatModel.GPT_4O)
-                .addUserMessage(PromptProvider.forEntry(
-                    entry.input, entry.referenceOutput, entry.modelOutput
-                ))
+                .addUserMessage(
+                    PromptProvider.forEntry(
+                        entry.input,
+                        entry.referenceOutput,
+                        entry.modelOutput,
+                    ),
+                )
                 .responseFormat(Feedback::class.java)
                 .build()
 
@@ -119,16 +120,16 @@ suspend fun evaluateWithLLM(
 
     // Majority vote on totalScore
     val majorityScore = results
-        .groupingBy { it.totalScore }
+        .groupingBy { it.score }
         .eachCount()
         .maxByOrNull { it.value }!!
         .key
 
     // Return the first Feedback matching the majority totalScore
-    results.first { it.totalScore == majorityScore }
+    results.first { it.score == majorityScore }
 }
 
-class MyToolWindowFactory : ToolWindowFactory {
+class LlmJudgeToolWindowFactory : ToolWindowFactory {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
@@ -136,7 +137,9 @@ class MyToolWindowFactory : ToolWindowFactory {
 
         // Setup table with four columns
         val columns = arrayOf("Input", "Reference Output", "Model Output", "Score")
-        val tableModel = DefaultTableModel(columns, 0)
+        val tableModel = object : DefaultTableModel(columns, 0) {
+            override fun isCellEditable(row: Int, column: Int): Boolean = false
+        }
         val table = JBTable(tableModel).apply { fillsViewportHeight = true }
         panel.add(JBScrollPane(table), BorderLayout.CENTER)
 
@@ -154,8 +157,8 @@ class MyToolWindowFactory : ToolWindowFactory {
                 val presentation = e.presentation
                 // If we're already running, cancel everything
                 if (presentation.icon === AllIcons.Actions.Suspend) {
-                    scope.coroutineContext.cancelChildren()                 // stop all in‐flight jobs
-                    presentation.icon = AllIcons.Actions.Execute           // swap back to ▶️
+                    scope.coroutineContext.cancelChildren() // stop all in‐flight jobs
+                    presentation.icon = AllIcons.Actions.Execute // swap back to ▶️
                     return
                 }
 
@@ -170,7 +173,7 @@ class MyToolWindowFactory : ToolWindowFactory {
                         .createNotification(
                             "Missing API Key",
                             "Please set the OPENAI_API_KEY environment variable to use LLM scoring.",
-                            NotificationType.ERROR
+                            NotificationType.ERROR,
                         )
                         .notify(project)
                     return
@@ -196,13 +199,15 @@ class MyToolWindowFactory : ToolWindowFactory {
                     val process = ProcessBuilder(
                         "python3",
                         scriptFile.absolutePath,
-                        "--input", entry.input
+                        "--input",
+                        entry.input,
                     )
                         .directory(File(base))
                         .redirectErrorStream(true)
                         .start()
                     val output = process.inputStream.bufferedReader().readText().trim()
                     process.waitFor()
+                    entry.modelOutput = output
                     tableModel.setValueAt(output, rowIndex, 2)
 
                     val job = scope.launch {
@@ -214,7 +219,7 @@ class MyToolWindowFactory : ToolWindowFactory {
                         try {
                             val feedback = evaluateWithLLM(openai, entry, calls = 5)
                             SwingUtilities.invokeLater {
-                                tableModel.setValueAt(feedback.totalScore, rowIndex, 3)
+                                tableModel.setValueAt(feedback.score, rowIndex, 3)
                             }
                         } catch (e: Exception) {
                             // Log error message and full stacktrace
@@ -233,7 +238,7 @@ class MyToolWindowFactory : ToolWindowFactory {
                     // wait for every per-row job
                     jobs.joinAll()
                     SwingUtilities.invokeLater {
-                        presentation.icon = AllIcons.Actions.Execute    // green ▶️
+                        presentation.icon = AllIcons.Actions.Execute // green ▶️
                     }
                 }
             }
