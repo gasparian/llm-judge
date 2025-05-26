@@ -1,0 +1,19 @@
+<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+    <id>com.github.gasparian.llmjudge</id>
+    <name>llm-judge</name>
+    <vendor>gasparian</vendor>
+
+    <depends>com.intellij.modules.platform</depends>
+    <resource-bundle>messages.LlmJudgeBundle</resource-bundle>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow
+                id="LLM Judge"
+                anchor="right"
+                factoryClass="com.github.gasparian.llmjudge.toolWindow.LlmJudgeToolWindowFactory"/>
+        <notificationGroup
+                id="LLM Judge"
+                displayType="BALLOON"/>
+    </extensions>
+</idea-plugin>

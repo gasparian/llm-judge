@@ -1,0 +1,7 @@
+{
+  "model_path": "script.py",
+  "data": [
+    { "input": "input1", "reference_output": "ref1" },
+    { "input": "input2", "reference_output": "ref2" }
+  ]
+}
